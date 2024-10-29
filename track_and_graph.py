@@ -108,23 +108,151 @@ class DailyTrackingApp:
         self.button_frame.pack()
         print("Created button frame.")
 
+        self.add_folder_button = ttk.Button(self.button_frame, text="Add Folder", command=self.add_folder)
+        self.add_folder_button.pack(side='left', padx=self.ui_padding, pady=self.ui_padding)
+        print("Created 'Add Folder' button.")
+
         self.add_item_button = ttk.Button(self.button_frame, text="Add Item", command=self.add_item)
         self.add_item_button.pack(side='left', padx=self.ui_padding, pady=self.ui_padding)
-        self.add_item_button.bind('<Return>', lambda event: self.add_item())
         print("Created 'Add Item' button.")
 
         self.copy_previous_button = ttk.Button(self.button_frame, text="Copy Previous", command=self.copy_previous)
         self.copy_previous_button.pack(side='left', padx=self.ui_padding, pady=self.ui_padding)
-        self.copy_previous_button.bind('<Return>', lambda event: self.copy_previous())
         print("Created 'Copy Previous' button.")
 
         self.items_frame = ttk.Frame(self.tracking_frame)
-        self.items_frame.pack()
+        self.items_frame.pack(fill='both', expand=True)
         print("Created items frame.")
+
+        # Create Treeview for items
+        self.tree = ttk.Treeview(self.items_frame)
+        self.tree.pack(fill='both', expand=True)
+        print("Created Treeview for items.")
+
+        # Configure Treeview columns
+        self.tree['columns'] = ('Value')
+        self.tree.heading('#0', text='Item')
+        self.tree.heading('Value', text='Value')
+        print("Configured Treeview columns.")
+
+        # Bind Treeview events for drag and drop
+        self.tree.bind('<ButtonPress-1>', self.on_tree_item_press)
+        self.tree.bind('<B1-Motion>', self.on_tree_item_motion)
+        self.tree.bind('<ButtonRelease-1>', self.on_tree_item_release)
+        print("Bound Treeview events for drag and drop.")
 
         # Load items for the current date
         self.load_items()
         print("Loaded items for the current date.")
+
+    def on_tree_item_press(self, event):
+        print("Treeview item pressed.")
+        item_id = self.tree.identify_row(event.y)
+        if item_id:
+            self.dragged_item = item_id
+            print("Dragging item:", self.tree.item(item_id)['text'])
+        else:
+            self.dragged_item = None
+
+    def on_tree_item_motion(self, event):
+        if not self.dragged_item:
+            return
+        self.tree.move(self.dragged_item, self.tree.parent(self.dragged_item), self.tree.index(self.tree.identify_row(event.y)))
+        print("Moved item during drag.")
+
+    def on_tree_item_release(self, event):
+        print("Treeview item released.")
+        if not self.dragged_item:
+            return
+        target_item = self.tree.identify_row(event.y)
+        if target_item and target_item != self.dragged_item:
+            print("Dropped on item:", self.tree.item(target_item)['text'])
+            self.move_item_in_data(self.dragged_item, target_item)
+            self.save_data()
+        else:
+            print("Dropped on empty space or same item.")
+        self.dragged_item = None
+
+    def move_item_in_data(self, item_id, target_item_id):
+        print("Moving item in data.")
+        item_path = self.tree.set(item_id, "path")
+        target_path = self.tree.set(target_item_id, "path")
+        print("Item path:", item_path)
+        print("Target path:", target_path)
+
+        # Get item data
+        item_data = self.get_item_by_path(self.data[self.current_date], item_path.split('/'))
+        # Remove item from old location
+        self.remove_item_by_path(self.data[self.current_date], item_path.split('/'))
+        # Add item to new location
+        target_data = self.get_item_by_path(self.data[self.current_date], target_path.split('/'))
+        if 'items' not in target_data:
+            target_data['items'] = {}
+        target_data['items'][self.tree.item(item_id)['text']] = item_data
+        print("Moved item in data structure.")
+
+    def get_item_by_path(self, data_dict, path_list):
+        print("Getting item by path:", path_list)
+        if not path_list:
+            return data_dict
+        key = path_list[0]
+        if 'items' in data_dict and key in data_dict['items']:
+            return self.get_item_by_path(data_dict['items'][key], path_list[1:])
+        elif key in data_dict:
+            return self.get_item_by_path(data_dict[key], path_list[1:])
+        else:
+            return None
+
+    def remove_item_by_path(self, data_dict, path_list):
+        print("Removing item by path:", path_list)
+        if len(path_list) == 1:
+            key = path_list[0]
+            if 'items' in data_dict and key in data_dict['items']:
+                del data_dict['items'][key]
+                print("Removed item:", key)
+        else:
+            key = path_list[0]
+            if 'items' in data_dict and key in data_dict['items']:
+                self.remove_item_by_path(data_dict['items'][key], path_list[1:])
+
+    def add_folder(self):
+        print("Adding a new folder.")
+        new_folder_window = tk.Toplevel(self.root)
+        new_folder_window.title("Add New Folder")
+        print("Created new folder window.")
+
+        label = ttk.Label(new_folder_window, text="Folder Name:")
+        label.pack()
+        print("Created label for folder name.")
+
+        entry = ttk.Entry(new_folder_window)
+        entry.pack()
+        entry.focus_set()
+        print("Created entry for folder name and set focus.")
+
+        def save_folder():
+            folder_name = entry.get()
+            print("Saving folder:", folder_name)
+            if folder_name:
+                if self.current_date not in self.data:
+                    self.data[self.current_date] = {}
+                    print("Initialized data for current date.")
+                if 'folders' not in self.data[self.current_date]:
+                    self.data[self.current_date]['folders'] = {}
+                self.data[self.current_date]['folders'][folder_name] = {'items': {}}
+                print("Added folder to data:", folder_name)
+                self.save_data()
+                self.refresh_items()
+                new_folder_window.destroy()
+                print("New folder window closed.")
+
+        # Bind Enter key to save the folder
+        entry.bind('<Return>', lambda event: save_folder())
+        new_folder_window.bind('<Escape>', lambda event: new_folder_window.destroy())
+
+        save_button = ttk.Button(new_folder_window, text="Save", command=save_folder)
+        save_button.pack()
+        print("Created save button for new folder.")
 
     def add_item(self):
         print("Adding a new item.")
@@ -161,15 +289,17 @@ class DailyTrackingApp:
                 if self.current_date not in self.data:
                     self.data[self.current_date] = {}
                     print("Initialized data for current date.")
-                # Initialize value based on type
-                if item_type == "complete/incomplete":
-                    value = False
-                elif item_type in ["float", "int"]:
-                    value = 0
-                elif item_type == "string":
-                    value = ""
-                self.data[self.current_date][item_name] = {'type': item_type, 'value': value}
-                print("Added item to data:", item_name)
+                # Find selected folder or root
+                selected_item = self.tree.selection()
+                parent_folder = ''
+                if selected_item:
+                    selected_id = selected_item[0]
+                    parent_folder = self.tree.set(selected_id, "path")
+                    print("Selected parent folder:", parent_folder)
+                else:
+                    print("No folder selected. Adding to root.")
+                # Add item to data
+                self.add_item_to_data(item_name, item_type, parent_folder)
                 self.save_data()
                 self.refresh_items()
                 new_item_window.destroy()
@@ -189,6 +319,20 @@ class DailyTrackingApp:
         entry.focus_set()
         entry.bind('<Tab>', lambda event: type_dropdown.focus_set())
         type_dropdown.bind('<Tab>', lambda event: save_button.focus_set())
+
+    def add_item_to_data(self, item_name, item_type, parent_path):
+        print("Adding item to data at path:", parent_path)
+        if not parent_path:
+            data_dict = self.data[self.current_date]
+        else:
+            data_dict = self.get_item_by_path(self.data[self.current_date], parent_path.split('/'))
+        if 'items' not in data_dict:
+            data_dict['items'] = {}
+        data_dict['items'][item_name] = {
+            'type': item_type,
+            'value': self.get_default_value(item_type)
+        }
+        print("Added item:", item_name, "to data.")
 
     def dropdown_key_navigation(self, event):
         # Allow arrow keys to navigate dropdown options
@@ -216,14 +360,22 @@ class DailyTrackingApp:
         print("Previous date:", previous_date)
         if previous_date and previous_date in self.data:
             # Copy item names and types without values
-            self.data[self.current_date] = {}
-            for item_name, item_info in self.data[previous_date].items():
-                self.data[self.current_date][item_name] = {'type': item_info['type'], 'value': self.get_default_value(item_info['type'])}
-                print("Copied item:", item_name, "with type:", item_info['type'])
+            self.data[self.current_date] = copy.deepcopy(self.data[previous_date])
+            self.clear_values(self.data[self.current_date])
+            print("Copied items from previous date without values.")
             self.save_data()
             self.refresh_items()
         else:
             print("No previous date to copy items from.")
+
+    def clear_values(self, data_dict):
+        print("Clearing values in data.")
+        for key, value in data_dict.items():
+            if 'items' in value:
+                self.clear_values(value['items'])
+            else:
+                value['value'] = self.get_default_value(value['type'])
+                print("Cleared value for item:", key)
 
     def get_default_value(self, item_type):
         print("Getting default value for type:", item_type)
@@ -274,84 +426,44 @@ class DailyTrackingApp:
 
     def refresh_items(self):
         print("Refreshing items.")
-        for widget in self.items_frame.winfo_children():
-            widget.destroy()
-            print("Destroyed existing item widget.")
-
+        # Clear the Treeview
+        self.tree.delete(*self.tree.get_children())
+        print("Cleared Treeview items.")
+        # Reload items
         self.load_items()
         print("Reloaded items.")
 
     def load_items(self):
         print("Loading items.")
-        self.item_vars = {}
         if self.current_date in self.data:
-            for item_name, item_info in self.data[self.current_date].items():
-                item_type = item_info['type']
-                value = item_info['value']
-                print("Loaded item:", item_name, "Type:", item_type, "Value:", value)
-
-                frame = ttk.Frame(self.items_frame)
-                frame.pack(anchor='w', fill='x', padx=self.ui_padding, pady=self.ui_padding)
-                print("Created frame for item:", item_name)
-
-                label = ttk.Label(frame, text=item_name)
-                label.pack(side='left')
-                print("Created label for item:", item_name)
-
-                if item_type == "complete/incomplete":
-                    var = tk.BooleanVar(value=value)
-                    cb = ttk.Checkbutton(frame, variable=var, command=lambda name=item_name, var=var: self.update_item(name, var.get()))
-                    cb.pack(side='left')
-                    cb.bind('<Return>', lambda event, name=item_name, var=var: self.toggle_checkbox(var))
-                    print("Created checkbox for item:", item_name)
-                    self.item_vars[item_name] = var
-                elif item_type in ["float", "int", "string"]:
-                    var = tk.StringVar(value=str(value))
-                    entry = ttk.Entry(frame, textvariable=var)
-                    entry.pack(side='left')
-                    entry.bind('<FocusOut>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
-                    entry.bind('<Return>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
-                    entry.bind('<Tab>', self.focus_next_widget)
-                    print("Created entry for item:", item_name)
-                    self.item_vars[item_name] = var
-                else:
-                    print("Unknown type for item:", item_name)
+            self.insert_tree_items('', self.data[self.current_date])
         else:
             print("No items for current date.")
 
-    def toggle_checkbox(self, var):
-        # Toggle the BooleanVar associated with the checkbox
-        var.set(not var.get())
-        print("Toggled checkbox to:", var.get())
-        self.save_data()
-
-    def focus_next_widget(self, event):
-        event.widget.tk_focusNext().focus()
-        return "break"
-
-    def update_item(self, item_name, value):
-        print("Updating item:", item_name, "with value:", value)
-        item_type = self.data[self.current_date][item_name]['type']
-        if item_type == "complete/incomplete":
-            self.data[self.current_date][item_name]['value'] = value
-        elif item_type == "int":
-            try:
-                self.data[self.current_date][item_name]['value'] = int(value)
-                print("Set item to int:", int(value))
-            except ValueError:
-                print("Invalid int value for item:", item_name)
-        elif item_type == "float":
-            try:
-                self.data[self.current_date][item_name]['value'] = float(value)
-                print("Set item to float:", float(value))
-            except ValueError:
-                print("Invalid float value for item:", item_name)
-        elif item_type == "string":
-            self.data[self.current_date][item_name]['value'] = value
-            print("Set item to string:", value)
+    def insert_tree_items(self, parent, data_dict, parent_path=''):
+        print("Inserting tree items.")
+        if 'folders' in data_dict:
+            for folder_name, folder_data in data_dict['folders'].items():
+                folder_id = self.tree.insert(parent, 'end', text=folder_name, open=True)
+                folder_path = f"{parent_path}/{folder_name}" if parent_path else folder_name
+                self.tree.set(folder_id, 'path', folder_path)
+                print("Inserted folder:", folder_name)
+                self.insert_tree_items(folder_id, folder_data, folder_path)
+        if 'items' in data_dict:
+            for item_name, item_info in data_dict['items'].items():
+                item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
+                item_path = f"{parent_path}/{item_name}" if parent_path else item_name
+                self.tree.set(item_id, 'path', item_path)
+                print("Inserted item:", item_name)
         else:
-            print("Unknown type for item:", item_name)
-        self.save_data()
+            for key, value in data_dict.items():
+                if isinstance(value, dict) and 'type' in value:
+                    item_name = key
+                    item_info = value
+                    item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
+                    item_path = f"{parent_path}/{item_name}" if parent_path else item_name
+                    self.tree.set(item_id, 'path', item_path)
+                    print("Inserted item:", item_name)
 
     def create_graphs_tab(self):
         print("Creating graphs tab content.")
@@ -370,47 +482,74 @@ class DailyTrackingApp:
         self.graphs_pane.add(self.graph_view_pane, weight=4)
         print("Created graph view pane.")
 
-        # Listbox for item selection
-        self.item_listbox = tk.Listbox(self.item_selection_pane, exportselection=False)
-        self.item_listbox.pack(fill=tk.BOTH, expand=1)
-        self.item_listbox.bind('<<ListboxSelect>>', self.plot_item)
-        self.item_listbox.bind('<Return>', self.plot_item)
-        self.item_listbox.bind('<Double-Button-1>', self.plot_item)
-        print("Created item listbox.")
+        # Treeview for item selection
+        self.graph_tree = ttk.Treeview(self.item_selection_pane)
+        self.graph_tree.pack(fill=tk.BOTH, expand=1)
+        self.graph_tree.bind('<<TreeviewSelect>>', self.plot_item)
+        print("Created Treeview for graph item selection.")
 
-        self.populate_item_listbox()
-        print("Populated item listbox.")
+        self.populate_graph_tree()
+        print("Populated graph Treeview.")
 
-    def populate_item_listbox(self):
-        print("Populating item listbox.")
-        items = set()
+    def populate_graph_tree(self):
+        print("Populating graph Treeview.")
+        self.graph_tree.delete(*self.graph_tree.get_children())
+        # Build a set of all items across dates
+        all_items = {}
         for date in self.data:
-            for item_name, item_info in self.data[date].items():
+            self.collect_graph_items('', self.data[date], all_items)
+        # Insert items into the Treeview
+        self.insert_graph_tree_items('', all_items)
+        print("Inserted items into graph Treeview.")
+
+    def collect_graph_items(self, parent_path, data_dict, all_items):
+        if 'folders' in data_dict:
+            for folder_name, folder_data in data_dict['folders'].items():
+                folder_path = f"{parent_path}/{folder_name}" if parent_path else folder_name
+                if folder_path not in all_items:
+                    all_items[folder_path] = {'folders': {}, 'items': {}}
+                self.collect_graph_items(folder_path, folder_data, all_items[folder_path])
+        if 'items' in data_dict:
+            for item_name, item_info in data_dict['items'].items():
+                item_path = f"{parent_path}/{item_name}" if parent_path else item_name
                 if item_info['type'] in ["float", "int", "complete/incomplete"]:
-                    items.add(item_name)
-        self.graphable_items = sorted(list(items))
-        print("Graphable items:", self.graphable_items)
-        self.item_listbox.delete(0, tk.END)
-        for item in self.graphable_items:
-            self.item_listbox.insert(tk.END, item)
-            print("Inserted item into listbox:", item)
+                    all_items.setdefault(parent_path, {'folders': {}, 'items': {}})
+                    all_items[parent_path]['items'][item_name] = item_info['type']
+        else:
+            for key, value in data_dict.items():
+                if isinstance(value, dict) and 'type' in value:
+                    item_name = key
+                    item_info = value
+                    if item_info['type'] in ["float", "int", "complete/incomplete"]:
+                        all_items.setdefault(parent_path, {'folders': {}, 'items': {}})
+                        all_items[parent_path]['items'][item_name] = item_info['type']
+
+    def insert_graph_tree_items(self, parent, items_dict):
+        for folder_name, folder_data in items_dict.get('folders', {}).items():
+            folder_id = self.graph_tree.insert(parent, 'end', text=folder_name, open=True)
+            self.insert_graph_tree_items(folder_id, folder_data)
+            print("Inserted folder into graph Treeview:", folder_name)
+        for item_name in items_dict.get('items', {}):
+            item_id = self.graph_tree.insert(parent, 'end', text=item_name)
+            print("Inserted item into graph Treeview:", item_name)
 
     def plot_item(self, event):
         print("Plotting selected item.")
-        selected_indices = self.item_listbox.curselection()
-        if not selected_indices:
+        selected_items = self.graph_tree.selection()
+        if not selected_items:
             print("No item selected.")
             return
-        selected_index = selected_indices[0]
-        item_name = self.graphable_items[selected_index]
+        item_id = selected_items[0]
+        item_name = self.graph_tree.item(item_id)['text']
         print("Selected item:", item_name)
 
         dates = sorted(self.data.keys())
         values = []
         labels = []
         for date in dates:
-            if item_name in self.data[date]:
-                item_info = self.data[date][item_name]
+            data_dict = self.data[date]
+            item_info = self.find_item_in_data(data_dict, item_name)
+            if item_info:
                 item_type = item_info['type']
                 value = item_info['value']
                 try:
@@ -444,6 +583,20 @@ class DailyTrackingApp:
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
         print("Plotted item on graph.")
+
+    def find_item_in_data(self, data_dict, item_name):
+        if 'folders' in data_dict:
+            for folder_data in data_dict['folders'].values():
+                result = self.find_item_in_data(folder_data, item_name)
+                if result:
+                    return result
+        if 'items' in data_dict:
+            if item_name in data_dict['items']:
+                return data_dict['items'][item_name]
+        for key, value in data_dict.items():
+            if isinstance(value, dict) and 'type' in value and key == item_name:
+                return value
+        return None
 
     def create_settings_tab(self):
         print("Creating settings tab content.")
@@ -485,16 +638,8 @@ class DailyTrackingApp:
         print("Recreated widgets with updated settings.")
 
     def run(self):
-        # Set focus traversal order
-        self.add_item_button.focus_set()
-        self.root.bind('<Tab>', self.focus_next_widget)
-        self.root.bind('<Shift-Tab>', self.focus_prev_widget)
         self.root.mainloop()
         print("Application closed.")
-
-    def focus_prev_widget(self, event):
-        event.widget.tk_focusPrev().focus()
-        return "break"
 
 if __name__ == "__main__":
     print("Starting the application.")

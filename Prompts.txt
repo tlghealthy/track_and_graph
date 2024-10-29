@@ -21,3 +21,5 @@ Traceback (most recent call last):
 AttributeError: 'DailyTrackingApp' object has no attribute 'dropdown_key_navigation'
 Don't need both float and double types so let's only use float.
 
+Prompt 6:
+Great, this is going well so far! Now the next feature might be a bigger change so let's see if we can do it without breaking what we have working already. I would like the items on the tracking tab and the graphs tab to have a folders feature added so that I can organize them and collapse and expand the folders. I would also like to be able to drag items into other folders or just drag them to reorder as well.
