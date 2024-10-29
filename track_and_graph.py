@@ -10,6 +10,7 @@ from matplotlib.figure import Figure
 
 print("Imported necessary modules.")
 
+
 class DailyTrackingApp:
     def __init__(self, root):
         print("Initializing the Daily Tracking App.")
@@ -32,6 +33,7 @@ class DailyTrackingApp:
         self.ui_scale = 1.0
         self.ui_padding = 5
 
+        self.tree_item_paths = {}  # Dictionary to store item paths
         self.create_widgets()
         print("Created the widgets.")
 
@@ -130,7 +132,7 @@ class DailyTrackingApp:
         print("Created Treeview for items.")
 
         # Configure Treeview columns
-        self.tree['columns'] = ('Value')
+        self.tree['columns'] = ('Value',)
         self.tree.heading('#0', text='Item')
         self.tree.heading('Value', text='Value')
         print("Configured Treeview columns.")
@@ -175,8 +177,8 @@ class DailyTrackingApp:
 
     def move_item_in_data(self, item_id, target_item_id):
         print("Moving item in data.")
-        item_path = self.tree.set(item_id, "path")
-        target_path = self.tree.set(target_item_id, "path")
+        item_path = self.tree_item_paths[item_id]
+        target_path = self.tree_item_paths[target_item_id]
         print("Item path:", item_path)
         print("Target path:", target_path)
 
@@ -196,7 +198,9 @@ class DailyTrackingApp:
         if not path_list:
             return data_dict
         key = path_list[0]
-        if 'items' in data_dict and key in data_dict['items']:
+        if 'folders' in data_dict and key in data_dict['folders']:
+            return self.get_item_by_path(data_dict['folders'][key], path_list[1:])
+        elif 'items' in data_dict and key in data_dict['items']:
             return self.get_item_by_path(data_dict['items'][key], path_list[1:])
         elif key in data_dict:
             return self.get_item_by_path(data_dict[key], path_list[1:])
@@ -210,9 +214,14 @@ class DailyTrackingApp:
             if 'items' in data_dict and key in data_dict['items']:
                 del data_dict['items'][key]
                 print("Removed item:", key)
+            elif 'folders' in data_dict and key in data_dict['folders']:
+                del data_dict['folders'][key]
+                print("Removed folder:", key)
         else:
             key = path_list[0]
-            if 'items' in data_dict and key in data_dict['items']:
+            if 'folders' in data_dict and key in data_dict['folders']:
+                self.remove_item_by_path(data_dict['folders'][key], path_list[1:])
+            elif 'items' in data_dict and key in data_dict['items']:
                 self.remove_item_by_path(data_dict['items'][key], path_list[1:])
 
     def add_folder(self):
@@ -237,10 +246,17 @@ class DailyTrackingApp:
                 if self.current_date not in self.data:
                     self.data[self.current_date] = {}
                     print("Initialized data for current date.")
-                if 'folders' not in self.data[self.current_date]:
-                    self.data[self.current_date]['folders'] = {}
-                self.data[self.current_date]['folders'][folder_name] = {'items': {}}
-                print("Added folder to data:", folder_name)
+                # Find selected folder or root
+                selected_item = self.tree.selection()
+                parent_folder = ''
+                if selected_item:
+                    selected_id = selected_item[0]
+                    parent_folder = self.tree_item_paths[selected_id]
+                    print("Selected parent folder:", parent_folder)
+                else:
+                    print("No folder selected. Adding to root.")
+                # Add folder to data
+                self.add_folder_to_data(folder_name, parent_folder)
                 self.save_data()
                 self.refresh_items()
                 new_folder_window.destroy()
@@ -253,6 +269,17 @@ class DailyTrackingApp:
         save_button = ttk.Button(new_folder_window, text="Save", command=save_folder)
         save_button.pack()
         print("Created save button for new folder.")
+
+    def add_folder_to_data(self, folder_name, parent_path):
+        print("Adding folder to data at path:", parent_path)
+        if not parent_path:
+            data_dict = self.data[self.current_date]
+        else:
+            data_dict = self.get_item_by_path(self.data[self.current_date], parent_path.split('/'))
+        if 'folders' not in data_dict:
+            data_dict['folders'] = {}
+        data_dict['folders'][folder_name] = {'items': {}}
+        print("Added folder:", folder_name, "to data.")
 
     def add_item(self):
         print("Adding a new item.")
@@ -294,7 +321,7 @@ class DailyTrackingApp:
                 parent_folder = ''
                 if selected_item:
                     selected_id = selected_item[0]
-                    parent_folder = self.tree.set(selected_id, "path")
+                    parent_folder = self.tree_item_paths[selected_id]
                     print("Selected parent folder:", parent_folder)
                 else:
                     print("No folder selected. Adding to root.")
@@ -371,9 +398,13 @@ class DailyTrackingApp:
     def clear_values(self, data_dict):
         print("Clearing values in data.")
         for key, value in data_dict.items():
+            if 'folders' in value:
+                self.clear_values(value['folders'])
             if 'items' in value:
-                self.clear_values(value['items'])
-            else:
+                for item_key, item_value in value['items'].items():
+                    item_value['value'] = self.get_default_value(item_value['type'])
+                    print("Cleared value for item:", item_key)
+            if 'type' in value:
                 value['value'] = self.get_default_value(value['type'])
                 print("Cleared value for item:", key)
 
@@ -428,6 +459,7 @@ class DailyTrackingApp:
         print("Refreshing items.")
         # Clear the Treeview
         self.tree.delete(*self.tree.get_children())
+        self.tree_item_paths.clear()
         print("Cleared Treeview items.")
         # Reload items
         self.load_items()
@@ -436,7 +468,7 @@ class DailyTrackingApp:
     def load_items(self):
         print("Loading items.")
         if self.current_date in self.data:
-            self.insert_tree_items('', self.data[self.current_date])
+            self.insert_tree_items('', self.data[self.current_date], parent_path='')
         else:
             print("No items for current date.")
 
@@ -446,14 +478,14 @@ class DailyTrackingApp:
             for folder_name, folder_data in data_dict['folders'].items():
                 folder_id = self.tree.insert(parent, 'end', text=folder_name, open=True)
                 folder_path = f"{parent_path}/{folder_name}" if parent_path else folder_name
-                self.tree.set(folder_id, 'path', folder_path)
+                self.tree_item_paths[folder_id] = folder_path
                 print("Inserted folder:", folder_name)
                 self.insert_tree_items(folder_id, folder_data, folder_path)
         if 'items' in data_dict:
             for item_name, item_info in data_dict['items'].items():
                 item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
                 item_path = f"{parent_path}/{item_name}" if parent_path else item_name
-                self.tree.set(item_id, 'path', item_path)
+                self.tree_item_paths[item_id] = item_path
                 print("Inserted item:", item_name)
         else:
             for key, value in data_dict.items():
@@ -462,7 +494,7 @@ class DailyTrackingApp:
                     item_info = value
                     item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
                     item_path = f"{parent_path}/{item_name}" if parent_path else item_name
-                    self.tree.set(item_id, 'path', item_path)
+                    self.tree_item_paths[item_id] = item_path
                     print("Inserted item:", item_name)
 
     def create_graphs_tab(self):
@@ -570,6 +602,10 @@ class DailyTrackingApp:
             widget.destroy()
             print("Cleared previous plot.")
 
+        if not values:
+            print("No data to plot.")
+            return
+
         # Plot the data
         fig = Figure(figsize=(5 * self.ui_scale, 4 * self.ui_scale), dpi=100)
         ax = fig.add_subplot(111)
@@ -640,6 +676,7 @@ class DailyTrackingApp:
     def run(self):
         self.root.mainloop()
         print("Application closed.")
+
 
 if __name__ == "__main__":
     print("Starting the application.")

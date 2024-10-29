@@ -23,3 +23,10 @@ Don't need both float and double types so let's only use float.
 
 Prompt 6:
 Great, this is going well so far! Now the next feature might be a bigger change so let's see if we can do it without breaking what we have working already. I would like the items on the tracking tab and the graphs tab to have a folders feature added so that I can organize them and collapse and expand the folders. I would also like to be able to drag items into other folders or just drag them to reorder as well.
+
+Prompt 7:
+Ok from testing I already found an issue so let's work through it: opening the app and adding a new item does seem to add the item but the 'add item window' does not close and shows this error:
+"C:\Users\Max\AppData\Local\Programs\Python\Python312\Lib\tkinter\ttk.py", line 1434, in set
+    res = self.tk.call(self._w, "set", item, column, value)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_tkinter.TclError: Invalid column index path
