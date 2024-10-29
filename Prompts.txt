@@ -1,1 +1,5 @@
+Prompt 1:
 Make a daily tracking app using python and tkinter with these core features: 1. easy add and reorder daily items on the main tracking tab. each has a checkbox indicating completed or not. 2. show the current date at the top of the tracking tab 3. A 'copy previous' button copies values from the previously logged day to current 4. to the right of the tracking tab is the graphs tab which has an item selection pane on the left and the graph view pane on the right. 5. Code it in a style that is easy to debug so that each significant line has a print statement.
+
+Prompt 2:
+There are a couple small and larger improvements I would like: 1. automatically select the input box so I can type after pressing the add button and also enter should submit like pressing the save button. 2. When adding a new item there should be a type dropdown menu with complete/incomplete as the default, and double, float, int, string as options too. 3. On the graphing tab these values should be shown over time as a bar graph by default (string doesn't need graphing for now)

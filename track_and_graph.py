@@ -3,6 +3,9 @@ from tkinter import ttk
 from datetime import datetime
 import json
 import os
+import matplotlib
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 print("Imported necessary modules.")
 
@@ -99,21 +102,45 @@ class DailyTrackingApp:
 
         entry = ttk.Entry(new_item_window)
         entry.pack()
-        print("Created entry for item name.")
+        entry.focus_set()  # Automatically focus on the entry box
+        print("Created entry for item name and set focus.")
+
+        # Type selection
+        type_label = ttk.Label(new_item_window, text="Item Type:")
+        type_label.pack()
+        print("Created label for item type.")
+
+        type_var = tk.StringVar(value="complete/incomplete")
+        type_options = ["complete/incomplete", "double", "float", "int", "string"]
+        type_dropdown = ttk.Combobox(new_item_window, textvariable=type_var, values=type_options, state="readonly")
+        type_dropdown.pack()
+        print("Created type dropdown menu.")
 
         def save_item():
             item_name = entry.get()
-            print("Saving item:", item_name)
+            item_type = type_var.get()
+            print("Saving item:", item_name, "with type:", item_type)
             if item_name:
                 if self.current_date not in self.data:
                     self.data[self.current_date] = {}
                     print("Initialized data for current date.")
-                self.data[self.current_date][item_name] = False
+                # Initialize value based on type
+                if item_type == "complete/incomplete":
+                    value = False
+                elif item_type in ["double", "float", "int"]:
+                    value = 0
+                elif item_type == "string":
+                    value = ""
+                self.data[self.current_date][item_name] = {'type': item_type, 'value': value}
                 print("Added item to data:", item_name)
                 self.save_data()
                 self.refresh_items()
                 new_item_window.destroy()
                 print("New item window closed.")
+
+        # Bind Enter key to save the item
+        entry.bind('<Return>', lambda event: save_item())
+        type_dropdown.bind('<Return>', lambda event: save_item())
 
         save_button = ttk.Button(new_item_window, text="Save", command=save_item)
         save_button.pack()
@@ -147,28 +174,73 @@ class DailyTrackingApp:
 
     def load_items(self):
         print("Loading items.")
-        self.check_vars = {}
+        self.item_vars = {}
         if self.current_date in self.data:
-            for item_name, completed in self.data[self.current_date].items():
-                var = tk.BooleanVar(value=completed)
-                print("Loaded item:", item_name, "Completed:", completed)
+            for item_name, item_info in self.data[self.current_date].items():
+                item_type = item_info['type']
+                value = item_info['value']
+                print("Loaded item:", item_name, "Type:", item_type, "Value:", value)
 
-                cb = ttk.Checkbutton(self.items_frame, text=item_name, variable=var, command=lambda name=item_name, var=var: self.update_item(name, var))
-                cb.pack(anchor='w')
-                print("Created checkbox for item:", item_name)
-                self.check_vars[item_name] = var
+                frame = ttk.Frame(self.items_frame)
+                frame.pack(anchor='w', fill='x')
+                print("Created frame for item:", item_name)
+
+                label = ttk.Label(frame, text=item_name)
+                label.pack(side='left')
+                print("Created label for item:", item_name)
+
+                if item_type == "complete/incomplete":
+                    var = tk.BooleanVar(value=value)
+                    cb = ttk.Checkbutton(frame, variable=var, command=lambda name=item_name, var=var: self.update_item(name, var.get()))
+                    cb.pack(side='left')
+                    print("Created checkbox for item:", item_name)
+                    self.item_vars[item_name] = var
+                elif item_type in ["double", "float", "int", "string"]:
+                    var = tk.StringVar(value=str(value))
+                    entry = ttk.Entry(frame, textvariable=var)
+                    entry.pack(side='left')
+                    entry.bind('<FocusOut>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
+                    entry.bind('<Return>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
+                    print("Created entry for item:", item_name)
+                    self.item_vars[item_name] = var
+                else:
+                    print("Unknown type for item:", item_name)
         else:
             print("No items for current date.")
 
-    def update_item(self, item_name, var):
-        print("Updating item:", item_name)
-        self.data[self.current_date][item_name] = var.get()
-        print("Set item to:", var.get())
+    def update_item(self, item_name, value):
+        print("Updating item:", item_name, "with value:", value)
+        item_type = self.data[self.current_date][item_name]['type']
+        if item_type == "complete/incomplete":
+            self.data[self.current_date][item_name]['value'] = value
+        elif item_type == "int":
+            try:
+                self.data[self.current_date][item_name]['value'] = int(value)
+                print("Set item to int:", int(value))
+            except ValueError:
+                print("Invalid int value for item:", item_name)
+        elif item_type == "float":
+            try:
+                self.data[self.current_date][item_name]['value'] = float(value)
+                print("Set item to float:", float(value))
+            except ValueError:
+                print("Invalid float value for item:", item_name)
+        elif item_type == "double":
+            try:
+                self.data[self.current_date][item_name]['value'] = float(value)
+                print("Set item to double:", float(value))
+            except ValueError:
+                print("Invalid double value for item:", item_name)
+        elif item_type == "string":
+            self.data[self.current_date][item_name]['value'] = value
+            print("Set item to string:", value)
+        else:
+            print("Unknown type for item:", item_name)
         self.save_data()
 
     def create_graphs_tab(self):
         print("Creating graphs tab content.")
-        # Placeholder for item selection pane and graph view pane
+        # Paned window dividing item selection and graph view
         self.graphs_pane = ttk.PanedWindow(self.graphs_frame, orient=tk.HORIZONTAL)
         self.graphs_pane.pack(fill=tk.BOTH, expand=1)
         print("Created graphs pane.")
@@ -183,10 +255,73 @@ class DailyTrackingApp:
         self.graphs_pane.add(self.graph_view_pane, weight=4)
         print("Created graph view pane.")
 
-        # For simplicity, we'll just show a label in the graph view
-        label = ttk.Label(self.graph_view_pane, text="Graphs will be displayed here.")
-        label.pack()
-        print("Created placeholder for graphs.")
+        # Listbox for item selection
+        self.item_listbox = tk.Listbox(self.item_selection_pane)
+        self.item_listbox.pack(fill=tk.BOTH, expand=1)
+        self.item_listbox.bind('<<ListboxSelect>>', self.plot_item)
+        print("Created item listbox.")
+
+        self.populate_item_listbox()
+        print("Populated item listbox.")
+
+    def populate_item_listbox(self):
+        print("Populating item listbox.")
+        items = set()
+        for date in self.data:
+            for item_name, item_info in self.data[date].items():
+                if item_info['type'] in ["double", "float", "int"]:
+                    items.add(item_name)
+        self.graphable_items = sorted(list(items))
+        print("Graphable items:", self.graphable_items)
+        self.item_listbox.delete(0, tk.END)
+        for item in self.graphable_items:
+            self.item_listbox.insert(tk.END, item)
+            print("Inserted item into listbox:", item)
+
+    def plot_item(self, event):
+        print("Plotting selected item.")
+        selected_indices = self.item_listbox.curselection()
+        if not selected_indices:
+            print("No item selected.")
+            return
+        selected_index = selected_indices[0]
+        item_name = self.graphable_items[selected_index]
+        print("Selected item:", item_name)
+
+        dates = sorted(self.data.keys())
+        values = []
+        labels = []
+        for date in dates:
+            if item_name in self.data[date]:
+                item_info = self.data[date][item_name]
+                value = item_info['value']
+                try:
+                    value = float(value)
+                    values.append(value)
+                    labels.append(date)
+                    print("Date:", date, "Value:", value)
+                except ValueError:
+                    print("Invalid value on date:", date)
+                    continue
+
+        # Clear previous plot
+        for widget in self.graph_view_pane.winfo_children():
+            widget.destroy()
+            print("Cleared previous plot.")
+
+        # Plot the data
+        fig = Figure(figsize=(5, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        ax.bar(labels, values)
+        ax.set_title(f"Values of {item_name} over time")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Value")
+        fig.autofmt_xdate()
+
+        canvas = FigureCanvasTkAgg(fig, master=self.graph_view_pane)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
+        print("Plotted item on graph.")
 
 if __name__ == "__main__":
     print("Starting the application.")
