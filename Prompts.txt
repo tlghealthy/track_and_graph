@@ -6,3 +6,6 @@ There are a couple small and larger improvements I would like: 1. automatically 
 
 Prompt 3:
 Good progress! A few more improvements would be: 1. There might be a bug with editing the current day's data which seems to overwrite the data from the previous day it was copied from too. 2. Allow tabbing and enter to use buttons and dropdowns with arrows.
+
+Prompt 4:
+Next add graphing for completed/boolean tasks as 0 or 1 value. Let's add a settings tab with ui scale, ui padding, and any other easy settings to let users make the ui easier to see. Also, when opening the app for the first time each day let's always copy over the previous day's items, but optionally allow the 'copy over' button to prefill them in with data. And there should be previous and next day buttons to navigate and edit other days' data.

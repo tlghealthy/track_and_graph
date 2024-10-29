@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
-import copy  # Import copy module for deepcopy
+import copy
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -20,6 +20,17 @@ class DailyTrackingApp:
         self.data_file = "tracking_data.json"
         self.load_data()
         print("Loaded data from file.")
+
+        self.current_date = datetime.now().strftime("%Y-%m-%d")
+        print("Set current date to today:", self.current_date)
+
+        # Check if current date data exists, if not, copy previous day's items without data
+        if self.current_date not in self.data:
+            print("Current date data not found. Copying items from previous day.")
+            self.copy_previous_items_only()
+
+        self.ui_scale = 1.0
+        self.ui_padding = 5
 
         self.create_widgets()
         print("Created the widgets.")
@@ -43,7 +54,7 @@ class DailyTrackingApp:
     def create_widgets(self):
         print("Creating widgets.")
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(expand=1, fill='both')
+        self.notebook.pack(expand=1, fill='both', padx=self.ui_padding, pady=self.ui_padding)
         print("Created notebook.")
 
         # Create Tracking tab
@@ -56,16 +67,38 @@ class DailyTrackingApp:
         self.notebook.add(self.graphs_frame, text='Graphs')
         print("Created graphs tab.")
 
+        # Create Settings tab
+        self.settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_frame, text='Settings')
+        print("Created settings tab.")
+
         self.create_tracking_tab()
         print("Initialized tracking tab content.")
 
         self.create_graphs_tab()
         print("Initialized graphs tab content.")
 
+        self.create_settings_tab()
+        print("Initialized settings tab content.")
+
     def create_tracking_tab(self):
         print("Creating tracking tab content.")
+        # Date navigation frame
+        self.date_nav_frame = ttk.Frame(self.tracking_frame)
+        self.date_nav_frame.pack()
+        print("Created date navigation frame.")
+
+        # Previous Day Button
+        self.prev_day_button = ttk.Button(self.date_nav_frame, text="< Previous Day", command=self.go_to_previous_day)
+        self.prev_day_button.pack(side='left')
+        print("Created 'Previous Day' button.")
+
+        # Next Day Button
+        self.next_day_button = ttk.Button(self.date_nav_frame, text="Next Day >", command=self.go_to_next_day)
+        self.next_day_button.pack(side='left')
+        print("Created 'Next Day' button.")
+
         # Display current date
-        self.current_date = datetime.now().strftime("%Y-%m-%d")
         self.date_label = ttk.Label(self.tracking_frame, text="Date: " + self.current_date)
         self.date_label.pack()
         print("Displayed current date:", self.current_date)
@@ -76,12 +109,12 @@ class DailyTrackingApp:
         print("Created button frame.")
 
         self.add_item_button = ttk.Button(self.button_frame, text="Add Item", command=self.add_item)
-        self.add_item_button.pack(side='left')
+        self.add_item_button.pack(side='left', padx=self.ui_padding, pady=self.ui_padding)
         self.add_item_button.bind('<Return>', lambda event: self.add_item())
         print("Created 'Add Item' button.")
 
         self.copy_previous_button = ttk.Button(self.button_frame, text="Copy Previous", command=self.copy_previous)
-        self.copy_previous_button.pack(side='left')
+        self.copy_previous_button.pack(side='left', padx=self.ui_padding, pady=self.ui_padding)
         self.copy_previous_button.bind('<Return>', lambda event: self.copy_previous())
         print("Created 'Copy Previous' button.")
 
@@ -157,30 +190,80 @@ class DailyTrackingApp:
         entry.bind('<Tab>', lambda event: type_dropdown.focus_set())
         type_dropdown.bind('<Tab>', lambda event: save_button.focus_set())
 
-    def dropdown_key_navigation(self, event):
-        # Allow arrow keys to navigate dropdown options
-        widget = event.widget
-        if event.keysym in ('Up', 'Down'):
-            widget.event_generate('<KeyPress-%s>' % event.keysym)
-            return 'break'
-
     def copy_previous(self):
-        print("Copying previous day's items.")
-        dates = sorted(self.data.keys())
-        print("Available dates:", dates)
-        if len(dates) >= 1:
-            previous_date = dates[-1]
-            print("Previous date:", previous_date)
-            if previous_date != self.current_date:
-                # Use deepcopy to avoid shared references
-                self.data[self.current_date] = copy.deepcopy(self.data[previous_date])
-                print("Copied data from previous date to current date using deepcopy.")
-                self.save_data()
-                self.refresh_items()
-            else:
-                print("No previous date to copy from.")
+        print("Copying previous day's data.")
+        previous_date = self.get_previous_date(self.current_date)
+        print("Previous date:", previous_date)
+        if previous_date and previous_date in self.data:
+            # Use deepcopy to avoid shared references
+            self.data[self.current_date] = copy.deepcopy(self.data[previous_date])
+            print("Copied data from previous date to current date using deepcopy.")
+            self.save_data()
+            self.refresh_items()
         else:
-            print("No data available to copy.")
+            print("No previous date to copy from.")
+
+    def copy_previous_items_only(self):
+        print("Copying previous day's items without data.")
+        previous_date = self.get_previous_date(self.current_date)
+        print("Previous date:", previous_date)
+        if previous_date and previous_date in self.data:
+            # Copy item names and types without values
+            self.data[self.current_date] = {}
+            for item_name, item_info in self.data[previous_date].items():
+                self.data[self.current_date][item_name] = {'type': item_info['type'], 'value': self.get_default_value(item_info['type'])}
+                print("Copied item:", item_name, "with type:", item_info['type'])
+            self.save_data()
+            self.refresh_items()
+        else:
+            print("No previous date to copy items from.")
+
+    def get_default_value(self, item_type):
+        print("Getting default value for type:", item_type)
+        if item_type == "complete/incomplete":
+            return False
+        elif item_type in ["double", "float", "int"]:
+            return 0
+        elif item_type == "string":
+            return ""
+        else:
+            return None
+
+    def get_previous_date(self, date_str):
+        print("Calculating previous date from:", date_str)
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        previous_date_obj = date_obj - timedelta(days=1)
+        previous_date_str = previous_date_obj.strftime("%Y-%m-%d")
+        print("Previous date is:", previous_date_str)
+        return previous_date_str
+
+    def get_next_date(self, date_str):
+        print("Calculating next date from:", date_str)
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        next_date_obj = date_obj + timedelta(days=1)
+        next_date_str = next_date_obj.strftime("%Y-%m-%d")
+        print("Next date is:", next_date_str)
+        return next_date_str
+
+    def go_to_previous_day(self):
+        print("Navigating to previous day.")
+        self.current_date = self.get_previous_date(self.current_date)
+        self.date_label.config(text="Date: " + self.current_date)
+        print("Updated current date to:", self.current_date)
+        if self.current_date not in self.data:
+            print("Current date data not found. Copying items from previous day.")
+            self.copy_previous_items_only()
+        self.refresh_items()
+
+    def go_to_next_day(self):
+        print("Navigating to next day.")
+        self.current_date = self.get_next_date(self.current_date)
+        self.date_label.config(text="Date: " + self.current_date)
+        print("Updated current date to:", self.current_date)
+        if self.current_date not in self.data:
+            print("Current date data not found. Copying items from previous day.")
+            self.copy_previous_items_only()
+        self.refresh_items()
 
     def refresh_items(self):
         print("Refreshing items.")
@@ -201,7 +284,7 @@ class DailyTrackingApp:
                 print("Loaded item:", item_name, "Type:", item_type, "Value:", value)
 
                 frame = ttk.Frame(self.items_frame)
-                frame.pack(anchor='w', fill='x')
+                frame.pack(anchor='w', fill='x', padx=self.ui_padding, pady=self.ui_padding)
                 print("Created frame for item:", item_name)
 
                 label = ttk.Label(frame, text=item_name)
@@ -233,6 +316,7 @@ class DailyTrackingApp:
     def toggle_checkbox(self, var):
         # Toggle the BooleanVar associated with the checkbox
         var.set(not var.get())
+        print("Toggled checkbox to:", var.get())
 
     def focus_next_widget(self, event):
         event.widget.tk_focusNext().focus()
@@ -301,7 +385,7 @@ class DailyTrackingApp:
         items = set()
         for date in self.data:
             for item_name, item_info in self.data[date].items():
-                if item_info['type'] in ["double", "float", "int"]:
+                if item_info['type'] in ["double", "float", "int", "complete/incomplete"]:
                     items.add(item_name)
         self.graphable_items = sorted(list(items))
         print("Graphable items:", self.graphable_items)
@@ -326,9 +410,14 @@ class DailyTrackingApp:
         for date in dates:
             if item_name in self.data[date]:
                 item_info = self.data[date][item_name]
+                item_type = item_info['type']
                 value = item_info['value']
                 try:
-                    value = float(value)
+                    if item_type == "complete/incomplete":
+                        value = 1 if value else 0
+                        print("Converted boolean value to:", value)
+                    else:
+                        value = float(value)
                     values.append(value)
                     labels.append(date)
                     print("Date:", date, "Value:", value)
@@ -342,7 +431,7 @@ class DailyTrackingApp:
             print("Cleared previous plot.")
 
         # Plot the data
-        fig = Figure(figsize=(5, 4), dpi=100)
+        fig = Figure(figsize=(5 * self.ui_scale, 4 * self.ui_scale), dpi=100)
         ax = fig.add_subplot(111)
         ax.bar(labels, values)
         ax.set_title(f"Values of {item_name} over time")
@@ -354,6 +443,45 @@ class DailyTrackingApp:
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
         print("Plotted item on graph.")
+
+    def create_settings_tab(self):
+        print("Creating settings tab content.")
+        padding_label = ttk.Label(self.settings_frame, text="UI Padding:")
+        padding_label.pack()
+        print("Created padding label.")
+
+        padding_var = tk.DoubleVar(value=self.ui_padding)
+        padding_spinbox = ttk.Spinbox(self.settings_frame, from_=0, to=50, increment=1, textvariable=padding_var)
+        padding_spinbox.pack()
+        print("Created padding spinbox.")
+
+        scale_label = ttk.Label(self.settings_frame, text="UI Scale:")
+        scale_label.pack()
+        print("Created scale label.")
+
+        scale_var = tk.DoubleVar(value=self.ui_scale)
+        scale_spinbox = ttk.Spinbox(self.settings_frame, from_=0.5, to=3.0, increment=0.1, textvariable=scale_var)
+        scale_spinbox.pack()
+        print("Created scale spinbox.")
+
+        def apply_settings():
+            self.ui_padding = padding_var.get()
+            self.ui_scale = scale_var.get()
+            print("Applied settings: UI Padding =", self.ui_padding, ", UI Scale =", self.ui_scale)
+            self.refresh_ui()
+
+        apply_button = ttk.Button(self.settings_frame, text="Apply", command=apply_settings)
+        apply_button.pack(pady=self.ui_padding)
+        print("Created apply settings button.")
+
+    def refresh_ui(self):
+        print("Refreshing UI with new settings.")
+        # Recreate widgets with new padding and scale
+        for widget in self.root.winfo_children():
+            widget.destroy()
+            print("Destroyed widget:", widget)
+        self.create_widgets()
+        print("Recreated widgets with updated settings.")
 
     def run(self):
         # Set focus traversal order
