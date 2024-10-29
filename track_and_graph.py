@@ -147,7 +147,7 @@ class DailyTrackingApp:
         print("Created label for item type.")
 
         type_var = tk.StringVar(value="complete/incomplete")
-        type_options = ["complete/incomplete", "double", "float", "int", "string"]
+        type_options = ["complete/incomplete", "float", "int", "string"]
         type_dropdown = ttk.Combobox(new_item_window, textvariable=type_var, values=type_options, state="readonly")
         type_dropdown.pack()
         type_dropdown.bind('<Key>', self.dropdown_key_navigation)
@@ -164,7 +164,7 @@ class DailyTrackingApp:
                 # Initialize value based on type
                 if item_type == "complete/incomplete":
                     value = False
-                elif item_type in ["double", "float", "int"]:
+                elif item_type in ["float", "int"]:
                     value = 0
                 elif item_type == "string":
                     value = ""
@@ -189,6 +189,13 @@ class DailyTrackingApp:
         entry.focus_set()
         entry.bind('<Tab>', lambda event: type_dropdown.focus_set())
         type_dropdown.bind('<Tab>', lambda event: save_button.focus_set())
+
+    def dropdown_key_navigation(self, event):
+        # Allow arrow keys to navigate dropdown options
+        widget = event.widget
+        if event.keysym in ('Up', 'Down'):
+            widget.event_generate('<KeyPress-%s>' % event.keysym)
+            return 'break'
 
     def copy_previous(self):
         print("Copying previous day's data.")
@@ -222,7 +229,7 @@ class DailyTrackingApp:
         print("Getting default value for type:", item_type)
         if item_type == "complete/incomplete":
             return False
-        elif item_type in ["double", "float", "int"]:
+        elif item_type in ["float", "int"]:
             return 0
         elif item_type == "string":
             return ""
@@ -296,10 +303,9 @@ class DailyTrackingApp:
                     cb = ttk.Checkbutton(frame, variable=var, command=lambda name=item_name, var=var: self.update_item(name, var.get()))
                     cb.pack(side='left')
                     cb.bind('<Return>', lambda event, name=item_name, var=var: self.toggle_checkbox(var))
-                    cb.focus_set()
                     print("Created checkbox for item:", item_name)
                     self.item_vars[item_name] = var
-                elif item_type in ["double", "float", "int", "string"]:
+                elif item_type in ["float", "int", "string"]:
                     var = tk.StringVar(value=str(value))
                     entry = ttk.Entry(frame, textvariable=var)
                     entry.pack(side='left')
@@ -317,6 +323,7 @@ class DailyTrackingApp:
         # Toggle the BooleanVar associated with the checkbox
         var.set(not var.get())
         print("Toggled checkbox to:", var.get())
+        self.save_data()
 
     def focus_next_widget(self, event):
         event.widget.tk_focusNext().focus()
@@ -339,12 +346,6 @@ class DailyTrackingApp:
                 print("Set item to float:", float(value))
             except ValueError:
                 print("Invalid float value for item:", item_name)
-        elif item_type == "double":
-            try:
-                self.data[self.current_date][item_name]['value'] = float(value)
-                print("Set item to double:", float(value))
-            except ValueError:
-                print("Invalid double value for item:", item_name)
         elif item_type == "string":
             self.data[self.current_date][item_name]['value'] = value
             print("Set item to string:", value)
@@ -385,7 +386,7 @@ class DailyTrackingApp:
         items = set()
         for date in self.data:
             for item_name, item_info in self.data[date].items():
-                if item_info['type'] in ["double", "float", "int", "complete/incomplete"]:
+                if item_info['type'] in ["float", "int", "complete/incomplete"]:
                     items.add(item_name)
         self.graphable_items = sorted(list(items))
         print("Graphable items:", self.graphable_items)

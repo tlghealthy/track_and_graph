@@ -9,3 +9,15 @@ Good progress! A few more improvements would be: 1. There might be a bug with ed
 
 Prompt 4:
 Next add graphing for completed/boolean tasks as 0 or 1 value. Let's add a settings tab with ui scale, ui padding, and any other easy settings to let users make the ui easier to see. Also, when opening the app for the first time each day let's always copy over the previous day's items, but optionally allow the 'copy over' button to prefill them in with data. And there should be previous and next day buttons to navigate and edit other days' data.
+
+Prompt 5:
+Bug introduced: can't add new items
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Users\Max\AppData\Local\Programs\Python\Python312\Lib\tkinter\__init__.py", line 1948, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Max\Documents\GitHub\AutomationTools\TrackGraph\track_graph.py", line 153, in add_item
+AttributeError: 'DailyTrackingApp' object has no attribute 'dropdown_key_navigation'
+Don't need both float and double types so let's only use float.
+
