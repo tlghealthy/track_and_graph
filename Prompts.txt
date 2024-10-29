@@ -3,3 +3,6 @@ Make a daily tracking app using python and tkinter with these core features: 1. 
 
 Prompt 2:
 There are a couple small and larger improvements I would like: 1. automatically select the input box so I can type after pressing the add button and also enter should submit like pressing the save button. 2. When adding a new item there should be a type dropdown menu with complete/incomplete as the default, and double, float, int, string as options too. 3. On the graphing tab these values should be shown over time as a bar graph by default (string doesn't need graphing for now)
+
+Prompt 3:
+Good progress! A few more improvements would be: 1. There might be a bug with editing the current day's data which seems to overwrite the data from the previous day it was copied from too. 2. Allow tabbing and enter to use buttons and dropdowns with arrows.

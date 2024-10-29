@@ -3,6 +3,7 @@ from tkinter import ttk
 from datetime import datetime
 import json
 import os
+import copy  # Import copy module for deepcopy
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -76,10 +77,12 @@ class DailyTrackingApp:
 
         self.add_item_button = ttk.Button(self.button_frame, text="Add Item", command=self.add_item)
         self.add_item_button.pack(side='left')
+        self.add_item_button.bind('<Return>', lambda event: self.add_item())
         print("Created 'Add Item' button.")
 
         self.copy_previous_button = ttk.Button(self.button_frame, text="Copy Previous", command=self.copy_previous)
         self.copy_previous_button.pack(side='left')
+        self.copy_previous_button.bind('<Return>', lambda event: self.copy_previous())
         print("Created 'Copy Previous' button.")
 
         self.items_frame = ttk.Frame(self.tracking_frame)
@@ -114,6 +117,7 @@ class DailyTrackingApp:
         type_options = ["complete/incomplete", "double", "float", "int", "string"]
         type_dropdown = ttk.Combobox(new_item_window, textvariable=type_var, values=type_options, state="readonly")
         type_dropdown.pack()
+        type_dropdown.bind('<Key>', self.dropdown_key_navigation)
         print("Created type dropdown menu.")
 
         def save_item():
@@ -141,10 +145,24 @@ class DailyTrackingApp:
         # Bind Enter key to save the item
         entry.bind('<Return>', lambda event: save_item())
         type_dropdown.bind('<Return>', lambda event: save_item())
+        new_item_window.bind('<Escape>', lambda event: new_item_window.destroy())  # Close window on Escape key
 
         save_button = ttk.Button(new_item_window, text="Save", command=save_item)
         save_button.pack()
+        save_button.bind('<Return>', lambda event: save_item())
         print("Created save button for new item.")
+
+        # Set focus traversal order
+        entry.focus_set()
+        entry.bind('<Tab>', lambda event: type_dropdown.focus_set())
+        type_dropdown.bind('<Tab>', lambda event: save_button.focus_set())
+
+    def dropdown_key_navigation(self, event):
+        # Allow arrow keys to navigate dropdown options
+        widget = event.widget
+        if event.keysym in ('Up', 'Down'):
+            widget.event_generate('<KeyPress-%s>' % event.keysym)
+            return 'break'
 
     def copy_previous(self):
         print("Copying previous day's items.")
@@ -154,8 +172,9 @@ class DailyTrackingApp:
             previous_date = dates[-1]
             print("Previous date:", previous_date)
             if previous_date != self.current_date:
-                self.data[self.current_date] = self.data[previous_date].copy()
-                print("Copied data from previous date to current date.")
+                # Use deepcopy to avoid shared references
+                self.data[self.current_date] = copy.deepcopy(self.data[previous_date])
+                print("Copied data from previous date to current date using deepcopy.")
                 self.save_data()
                 self.refresh_items()
             else:
@@ -193,6 +212,8 @@ class DailyTrackingApp:
                     var = tk.BooleanVar(value=value)
                     cb = ttk.Checkbutton(frame, variable=var, command=lambda name=item_name, var=var: self.update_item(name, var.get()))
                     cb.pack(side='left')
+                    cb.bind('<Return>', lambda event, name=item_name, var=var: self.toggle_checkbox(var))
+                    cb.focus_set()
                     print("Created checkbox for item:", item_name)
                     self.item_vars[item_name] = var
                 elif item_type in ["double", "float", "int", "string"]:
@@ -201,12 +222,21 @@ class DailyTrackingApp:
                     entry.pack(side='left')
                     entry.bind('<FocusOut>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
                     entry.bind('<Return>', lambda event, name=item_name, var=var: self.update_item(name, var.get()))
+                    entry.bind('<Tab>', self.focus_next_widget)
                     print("Created entry for item:", item_name)
                     self.item_vars[item_name] = var
                 else:
                     print("Unknown type for item:", item_name)
         else:
             print("No items for current date.")
+
+    def toggle_checkbox(self, var):
+        # Toggle the BooleanVar associated with the checkbox
+        var.set(not var.get())
+
+    def focus_next_widget(self, event):
+        event.widget.tk_focusNext().focus()
+        return "break"
 
     def update_item(self, item_name, value):
         print("Updating item:", item_name, "with value:", value)
@@ -256,9 +286,11 @@ class DailyTrackingApp:
         print("Created graph view pane.")
 
         # Listbox for item selection
-        self.item_listbox = tk.Listbox(self.item_selection_pane)
+        self.item_listbox = tk.Listbox(self.item_selection_pane, exportselection=False)
         self.item_listbox.pack(fill=tk.BOTH, expand=1)
         self.item_listbox.bind('<<ListboxSelect>>', self.plot_item)
+        self.item_listbox.bind('<Return>', self.plot_item)
+        self.item_listbox.bind('<Double-Button-1>', self.plot_item)
         print("Created item listbox.")
 
         self.populate_item_listbox()
@@ -323,9 +355,20 @@ class DailyTrackingApp:
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
         print("Plotted item on graph.")
 
+    def run(self):
+        # Set focus traversal order
+        self.add_item_button.focus_set()
+        self.root.bind('<Tab>', self.focus_next_widget)
+        self.root.bind('<Shift-Tab>', self.focus_prev_widget)
+        self.root.mainloop()
+        print("Application closed.")
+
+    def focus_prev_widget(self, event):
+        event.widget.tk_focusPrev().focus()
+        return "break"
+
 if __name__ == "__main__":
     print("Starting the application.")
     root = tk.Tk()
     app = DailyTrackingApp(root)
-    root.mainloop()
-    print("Application closed.")
+    app.run()
