@@ -30,3 +30,6 @@ Ok from testing I already found an issue so let's work through it: opening the a
     res = self.tk.call(self._w, "set", item, column, value)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 _tkinter.TclError: Invalid column index path
+
+Prompt 8:
+Nice that fixed that problem! now I noticed a couple other things: 1. reordering by dragging items does work, but the order is not saved for next time I close and open the app. 2. I cannot drag items into folders because it just reorders them right now so either we need to detect the type (item or folder) when an item is dropped after dragging and if it is a folder we move the item to be part of that folder or we could have a new button which indents the currently selected item if there is a folder directly above it in the list and then it becomes part of that folder.

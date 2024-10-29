@@ -42,7 +42,7 @@ class DailyTrackingApp:
         if os.path.exists(self.data_file):
             with open(self.data_file, 'r') as f:
                 self.data = json.load(f)
-                print("Data loaded:", self.data)
+                print("Data loaded.")
         else:
             self.data = {}
             print("No existing data file. Initialized empty data.")
@@ -51,7 +51,7 @@ class DailyTrackingApp:
         print("Saving data to file.")
         with open(self.data_file, 'w') as f:
             json.dump(self.data, f)
-            print("Data saved:", self.data)
+            print("Data saved.")
 
     def create_widgets(self):
         print("Creating widgets.")
@@ -148,10 +148,10 @@ class DailyTrackingApp:
         print("Loaded items for the current date.")
 
     def on_tree_item_press(self, event):
-        print("Treeview item pressed.")
         item_id = self.tree.identify_row(event.y)
         if item_id:
             self.dragged_item = item_id
+            self.dragged_item_parent = self.tree.parent(item_id)
             print("Dragging item:", self.tree.item(item_id)['text'])
         else:
             self.dragged_item = None
@@ -159,8 +159,15 @@ class DailyTrackingApp:
     def on_tree_item_motion(self, event):
         if not self.dragged_item:
             return
-        self.tree.move(self.dragged_item, self.tree.parent(self.dragged_item), self.tree.index(self.tree.identify_row(event.y)))
-        print("Moved item during drag.")
+        self.tree.selection_set(self.dragged_item)
+        moveto_item = self.tree.identify_row(event.y)
+        if moveto_item and moveto_item != self.dragged_item:
+            self.tree.move(self.dragged_item, self.tree.parent(moveto_item), self.tree.index(moveto_item))
+            print("Moved item during drag.")
+        elif not moveto_item:
+            # Move to root
+            self.tree.move(self.dragged_item, '', 'end')
+            print("Moved item to root during drag.")
 
     def on_tree_item_release(self, event):
         print("Treeview item released.")
@@ -169,200 +176,214 @@ class DailyTrackingApp:
         target_item = self.tree.identify_row(event.y)
         if target_item and target_item != self.dragged_item:
             print("Dropped on item:", self.tree.item(target_item)['text'])
-            self.move_item_in_data(self.dragged_item, target_item)
+            # Check if target is a folder (has children or is marked as folder)
+            if self.is_folder(target_item):
+                # Move item under the folder
+                self.tree.move(self.dragged_item, target_item, 'end')
+                print("Moved item into folder in Treeview.")
+            else:
+                # Reorder item in the same parent
+                self.tree.move(self.dragged_item, self.tree.parent(target_item), self.tree.index(target_item))
+                print("Reordered item in Treeview.")
+            self.update_data_order()
+            self.save_data()
+        elif not target_item:
+            # Moved to root
+            self.tree.move(self.dragged_item, '', 'end')
+            print("Moved item to root in Treeview.")
+            self.update_data_order()
             self.save_data()
         else:
-            print("Dropped on empty space or same item.")
+            print("Dropped on same item or invalid target.")
         self.dragged_item = None
 
-    def move_item_in_data(self, item_id, target_item_id):
-        print("Moving item in data.")
-        item_path = self.tree_item_paths[item_id]
-        target_path = self.tree_item_paths[target_item_id]
-        print("Item path:", item_path)
-        print("Target path:", target_path)
+    def is_folder(self, item_id):
+        return self.tree.get_children(item_id) != ()
 
-        # Get item data
-        item_data = self.get_item_by_path(self.data[self.current_date], item_path.split('/'))
-        # Remove item from old location
-        self.remove_item_by_path(self.data[self.current_date], item_path.split('/'))
-        # Add item to new location
-        target_data = self.get_item_by_path(self.data[self.current_date], target_path.split('/'))
-        if 'items' not in target_data:
-            target_data['items'] = {}
-        target_data['items'][self.tree.item(item_id)['text']] = item_data
-        print("Moved item in data structure.")
+    def update_data_order(self):
+        # Reconstruct the data structure based on the Treeview order
+        def build_data_from_tree(parent_item):
+            data_list = []
+            for child_id in self.tree.get_children(parent_item):
+                item_name = self.tree.item(child_id)['text']
+                item_path = self.tree_item_paths.get(child_id, '')
+                item_data = self.get_item_by_path(self.data[self.current_date], item_path.split('/'))
+                if self.is_folder(child_id):
+                    # Folder
+                    folder_data = {
+                        'name': item_name,
+                        'folders': [],
+                        'items': []
+                    }
+                    # Recursively build folder contents
+                    child_data = build_data_from_tree(child_id)
+                    folder_data['folders'] = child_data.get('folders', [])
+                    folder_data['items'] = child_data.get('items', [])
+                    data_list.append(folder_data)
+                else:
+                    # Item
+                    data_list.append({
+                        'name': item_name,
+                        'type': item_data['type'],
+                        'value': item_data['value']
+                    })
+            return {'folders': [item for item in data_list if 'folders' in item],
+                    'items': [item for item in data_list if 'type' in item]}
+
+        print("Updating data order based on Treeview.")
+        new_data = build_data_from_tree('')
+        self.data[self.current_date] = new_data
+        print("Data structure updated.")
 
     def get_item_by_path(self, data_dict, path_list):
-        print("Getting item by path:", path_list)
         if not path_list:
             return data_dict
         key = path_list[0]
-        if 'folders' in data_dict and key in data_dict['folders']:
-            return self.get_item_by_path(data_dict['folders'][key], path_list[1:])
-        elif 'items' in data_dict and key in data_dict['items']:
-            return self.get_item_by_path(data_dict['items'][key], path_list[1:])
-        elif key in data_dict:
-            return self.get_item_by_path(data_dict[key], path_list[1:])
-        else:
-            return None
-
-    def remove_item_by_path(self, data_dict, path_list):
-        print("Removing item by path:", path_list)
-        if len(path_list) == 1:
-            key = path_list[0]
-            if 'items' in data_dict and key in data_dict['items']:
-                del data_dict['items'][key]
-                print("Removed item:", key)
-            elif 'folders' in data_dict and key in data_dict['folders']:
-                del data_dict['folders'][key]
-                print("Removed folder:", key)
-        else:
-            key = path_list[0]
-            if 'folders' in data_dict and key in data_dict['folders']:
-                self.remove_item_by_path(data_dict['folders'][key], path_list[1:])
-            elif 'items' in data_dict and key in data_dict['items']:
-                self.remove_item_by_path(data_dict['items'][key], path_list[1:])
+        # Search in folders
+        for folder in data_dict.get('folders', []):
+            if folder['name'] == key:
+                return self.get_item_by_path(folder, path_list[1:])
+        # Search in items
+        for item in data_dict.get('items', []):
+            if item['name'] == key:
+                return item
+        return None
 
     def add_folder(self):
-        print("Adding a new folder.")
         new_folder_window = tk.Toplevel(self.root)
         new_folder_window.title("Add New Folder")
-        print("Created new folder window.")
 
         label = ttk.Label(new_folder_window, text="Folder Name:")
         label.pack()
-        print("Created label for folder name.")
 
         entry = ttk.Entry(new_folder_window)
         entry.pack()
         entry.focus_set()
-        print("Created entry for folder name and set focus.")
 
         def save_folder():
             folder_name = entry.get()
-            print("Saving folder:", folder_name)
             if folder_name:
                 if self.current_date not in self.data:
-                    self.data[self.current_date] = {}
-                    print("Initialized data for current date.")
+                    self.data[self.current_date] = {'folders': [], 'items': []}
                 # Find selected folder or root
                 selected_item = self.tree.selection()
-                parent_folder = ''
+                parent_folder_id = ''
                 if selected_item:
                     selected_id = selected_item[0]
-                    parent_folder = self.tree_item_paths[selected_id]
-                    print("Selected parent folder:", parent_folder)
+                    parent_folder_id = selected_id
+                    print("Selected parent folder:", self.tree.item(selected_id)['text'])
                 else:
                     print("No folder selected. Adding to root.")
                 # Add folder to data
-                self.add_folder_to_data(folder_name, parent_folder)
+                self.add_folder_to_data(folder_name, parent_folder_id)
                 self.save_data()
                 self.refresh_items()
                 new_folder_window.destroy()
-                print("New folder window closed.")
 
-        # Bind Enter key to save the folder
         entry.bind('<Return>', lambda event: save_folder())
         new_folder_window.bind('<Escape>', lambda event: new_folder_window.destroy())
 
         save_button = ttk.Button(new_folder_window, text="Save", command=save_folder)
         save_button.pack()
-        print("Created save button for new folder.")
 
-    def add_folder_to_data(self, folder_name, parent_path):
-        print("Adding folder to data at path:", parent_path)
-        if not parent_path:
-            data_dict = self.data[self.current_date]
+    def add_folder_to_data(self, folder_name, parent_folder_id):
+        if parent_folder_id:
+            parent_data = self.get_data_from_tree_item(parent_folder_id)
+            if 'folders' not in parent_data:
+                parent_data['folders'] = []
+            parent_data['folders'].append({
+                'name': folder_name,
+                'folders': [],
+                'items': []
+            })
         else:
-            data_dict = self.get_item_by_path(self.data[self.current_date], parent_path.split('/'))
-        if 'folders' not in data_dict:
-            data_dict['folders'] = {}
-        data_dict['folders'][folder_name] = {'items': {}}
-        print("Added folder:", folder_name, "to data.")
+            # Add to root
+            if self.current_date not in self.data:
+                self.data[self.current_date] = {'folders': [], 'items': []}
+            self.data[self.current_date]['folders'].append({
+                'name': folder_name,
+                'folders': [],
+                'items': []
+            })
+        print("Added folder:", folder_name)
 
     def add_item(self):
-        print("Adding a new item.")
         new_item_window = tk.Toplevel(self.root)
         new_item_window.title("Add New Item")
-        print("Created new item window.")
 
         label = ttk.Label(new_item_window, text="Item Name:")
         label.pack()
-        print("Created label for item name.")
 
         entry = ttk.Entry(new_item_window)
         entry.pack()
-        entry.focus_set()  # Automatically focus on the entry box
-        print("Created entry for item name and set focus.")
+        entry.focus_set()
 
         # Type selection
         type_label = ttk.Label(new_item_window, text="Item Type:")
         type_label.pack()
-        print("Created label for item type.")
 
         type_var = tk.StringVar(value="complete/incomplete")
         type_options = ["complete/incomplete", "float", "int", "string"]
         type_dropdown = ttk.Combobox(new_item_window, textvariable=type_var, values=type_options, state="readonly")
         type_dropdown.pack()
         type_dropdown.bind('<Key>', self.dropdown_key_navigation)
-        print("Created type dropdown menu.")
 
         def save_item():
             item_name = entry.get()
             item_type = type_var.get()
-            print("Saving item:", item_name, "with type:", item_type)
             if item_name:
                 if self.current_date not in self.data:
-                    self.data[self.current_date] = {}
-                    print("Initialized data for current date.")
+                    self.data[self.current_date] = {'folders': [], 'items': []}
                 # Find selected folder or root
                 selected_item = self.tree.selection()
-                parent_folder = ''
+                parent_folder_id = ''
                 if selected_item:
                     selected_id = selected_item[0]
-                    parent_folder = self.tree_item_paths[selected_id]
-                    print("Selected parent folder:", parent_folder)
+                    parent_folder_id = selected_id
+                    print("Selected parent folder:", self.tree.item(selected_id)['text'])
                 else:
                     print("No folder selected. Adding to root.")
                 # Add item to data
-                self.add_item_to_data(item_name, item_type, parent_folder)
+                self.add_item_to_data(item_name, item_type, parent_folder_id)
                 self.save_data()
                 self.refresh_items()
                 new_item_window.destroy()
-                print("New item window closed.")
 
-        # Bind Enter key to save the item
         entry.bind('<Return>', lambda event: save_item())
         type_dropdown.bind('<Return>', lambda event: save_item())
-        new_item_window.bind('<Escape>', lambda event: new_item_window.destroy())  # Close window on Escape key
+        new_item_window.bind('<Escape>', lambda event: new_item_window.destroy())
 
         save_button = ttk.Button(new_item_window, text="Save", command=save_item)
         save_button.pack()
-        save_button.bind('<Return>', lambda event: save_item())
-        print("Created save button for new item.")
 
-        # Set focus traversal order
         entry.focus_set()
         entry.bind('<Tab>', lambda event: type_dropdown.focus_set())
         type_dropdown.bind('<Tab>', lambda event: save_button.focus_set())
 
-    def add_item_to_data(self, item_name, item_type, parent_path):
-        print("Adding item to data at path:", parent_path)
-        if not parent_path:
-            data_dict = self.data[self.current_date]
-        else:
-            data_dict = self.get_item_by_path(self.data[self.current_date], parent_path.split('/'))
-        if 'items' not in data_dict:
-            data_dict['items'] = {}
-        data_dict['items'][item_name] = {
+    def add_item_to_data(self, item_name, item_type, parent_folder_id):
+        new_item = {
+            'name': item_name,
             'type': item_type,
             'value': self.get_default_value(item_type)
         }
-        print("Added item:", item_name, "to data.")
+        if parent_folder_id:
+            parent_data = self.get_data_from_tree_item(parent_folder_id)
+            if 'items' not in parent_data:
+                parent_data['items'] = []
+            parent_data['items'].append(new_item)
+        else:
+            # Add to root
+            if self.current_date not in self.data:
+                self.data[self.current_date] = {'folders': [], 'items': []}
+            self.data[self.current_date]['items'].append(new_item)
+        print("Added item:", item_name)
+
+    def get_data_from_tree_item(self, item_id):
+        item_path = self.tree_item_paths.get(item_id, '')
+        data = self.get_item_by_path(self.data[self.current_date], item_path.split('/'))
+        return data
 
     def dropdown_key_navigation(self, event):
-        # Allow arrow keys to navigate dropdown options
         widget = event.widget
         if event.keysym in ('Up', 'Down'):
             widget.event_generate('<KeyPress-%s>' % event.keysym)
@@ -396,20 +417,14 @@ class DailyTrackingApp:
             print("No previous date to copy items from.")
 
     def clear_values(self, data_dict):
-        print("Clearing values in data.")
-        for key, value in data_dict.items():
-            if 'folders' in value:
-                self.clear_values(value['folders'])
-            if 'items' in value:
-                for item_key, item_value in value['items'].items():
-                    item_value['value'] = self.get_default_value(item_value['type'])
-                    print("Cleared value for item:", item_key)
-            if 'type' in value:
-                value['value'] = self.get_default_value(value['type'])
-                print("Cleared value for item:", key)
+        if 'folders' in data_dict:
+            for folder in data_dict['folders']:
+                self.clear_values(folder)
+        if 'items' in data_dict:
+            for item in data_dict['items']:
+                item['value'] = self.get_default_value(item['type'])
 
     def get_default_value(self, item_type):
-        print("Getting default value for type:", item_type)
         if item_type == "complete/incomplete":
             return False
         elif item_type in ["float", "int"]:
@@ -420,82 +435,56 @@ class DailyTrackingApp:
             return None
 
     def get_previous_date(self, date_str):
-        print("Calculating previous date from:", date_str)
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
         previous_date_obj = date_obj - timedelta(days=1)
         previous_date_str = previous_date_obj.strftime("%Y-%m-%d")
-        print("Previous date is:", previous_date_str)
         return previous_date_str
 
     def get_next_date(self, date_str):
-        print("Calculating next date from:", date_str)
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
         next_date_obj = date_obj + timedelta(days=1)
         next_date_str = next_date_obj.strftime("%Y-%m-%d")
-        print("Next date is:", next_date_str)
         return next_date_str
 
     def go_to_previous_day(self):
-        print("Navigating to previous day.")
         self.current_date = self.get_previous_date(self.current_date)
         self.date_label.config(text="Date: " + self.current_date)
-        print("Updated current date to:", self.current_date)
         if self.current_date not in self.data:
-            print("Current date data not found. Copying items from previous day.")
             self.copy_previous_items_only()
         self.refresh_items()
 
     def go_to_next_day(self):
-        print("Navigating to next day.")
         self.current_date = self.get_next_date(self.current_date)
         self.date_label.config(text="Date: " + self.current_date)
-        print("Updated current date to:", self.current_date)
         if self.current_date not in self.data:
-            print("Current date data not found. Copying items from previous day.")
             self.copy_previous_items_only()
         self.refresh_items()
 
     def refresh_items(self):
-        print("Refreshing items.")
         # Clear the Treeview
         self.tree.delete(*self.tree.get_children())
         self.tree_item_paths.clear()
-        print("Cleared Treeview items.")
         # Reload items
         self.load_items()
-        print("Reloaded items.")
 
     def load_items(self):
-        print("Loading items.")
         if self.current_date in self.data:
             self.insert_tree_items('', self.data[self.current_date], parent_path='')
         else:
             print("No items for current date.")
 
     def insert_tree_items(self, parent, data_dict, parent_path=''):
-        print("Inserting tree items.")
-        if 'folders' in data_dict:
-            for folder_name, folder_data in data_dict['folders'].items():
-                folder_id = self.tree.insert(parent, 'end', text=folder_name, open=True)
-                folder_path = f"{parent_path}/{folder_name}" if parent_path else folder_name
-                self.tree_item_paths[folder_id] = folder_path
-                print("Inserted folder:", folder_name)
-                self.insert_tree_items(folder_id, folder_data, folder_path)
-        if 'items' in data_dict:
-            for item_name, item_info in data_dict['items'].items():
-                item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
-                item_path = f"{parent_path}/{item_name}" if parent_path else item_name
-                self.tree_item_paths[item_id] = item_path
-                print("Inserted item:", item_name)
-        else:
-            for key, value in data_dict.items():
-                if isinstance(value, dict) and 'type' in value:
-                    item_name = key
-                    item_info = value
-                    item_id = self.tree.insert(parent, 'end', text=item_name, values=(item_info['value'],))
-                    item_path = f"{parent_path}/{item_name}" if parent_path else item_name
-                    self.tree_item_paths[item_id] = item_path
-                    print("Inserted item:", item_name)
+        # Insert folders
+        for folder in data_dict.get('folders', []):
+            folder_id = self.tree.insert(parent, 'end', text=folder['name'], open=True)
+            folder_path = f"{parent_path}/{folder['name']}" if parent_path else folder['name']
+            self.tree_item_paths[folder_id] = folder_path
+            self.insert_tree_items(folder_id, folder, folder_path)
+        # Insert items
+        for item in data_dict.get('items', []):
+            item_id = self.tree.insert(parent, 'end', text=item['name'], values=(item['value'],))
+            item_path = f"{parent_path}/{item['name']}" if parent_path else item['name']
+            self.tree_item_paths[item_id] = item_path
 
     def create_graphs_tab(self):
         print("Creating graphs tab content.")
@@ -522,6 +511,45 @@ class DailyTrackingApp:
 
         self.populate_graph_tree()
         print("Populated graph Treeview.")
+
+    def create_settings_tab(self):
+        print("Creating settings tab content.")
+        padding_label = ttk.Label(self.settings_frame, text="UI Padding:")
+        padding_label.pack()
+        print("Created padding label.")
+
+        padding_var = tk.DoubleVar(value=self.ui_padding)
+        padding_spinbox = ttk.Spinbox(self.settings_frame, from_=0, to=50, increment=1, textvariable=padding_var)
+        padding_spinbox.pack()
+        print("Created padding spinbox.")
+
+        scale_label = ttk.Label(self.settings_frame, text="UI Scale:")
+        scale_label.pack()
+        print("Created scale label.")
+
+        scale_var = tk.DoubleVar(value=self.ui_scale)
+        scale_spinbox = ttk.Spinbox(self.settings_frame, from_=0.5, to=3.0, increment=0.1, textvariable=scale_var)
+        scale_spinbox.pack()
+        print("Created scale spinbox.")
+
+        def apply_settings():
+            self.ui_padding = padding_var.get()
+            self.ui_scale = scale_var.get()
+            print("Applied settings: UI Padding =", self.ui_padding, ", UI Scale =", self.ui_scale)
+            self.refresh_ui()
+
+        apply_button = ttk.Button(self.settings_frame, text="Apply", command=apply_settings)
+        apply_button.pack(pady=self.ui_padding)
+        print("Created apply settings button.")
+
+    def refresh_ui(self):
+        print("Refreshing UI with new settings.")
+        # Recreate widgets with new padding and scale
+        for widget in self.root.winfo_children():
+            widget.destroy()
+            print("Destroyed widget:", widget)
+        self.create_widgets()
+        print("Recreated widgets with updated settings.")
 
     def populate_graph_tree(self):
         print("Populating graph Treeview.")
@@ -634,45 +662,6 @@ class DailyTrackingApp:
                 return value
         return None
 
-    def create_settings_tab(self):
-        print("Creating settings tab content.")
-        padding_label = ttk.Label(self.settings_frame, text="UI Padding:")
-        padding_label.pack()
-        print("Created padding label.")
-
-        padding_var = tk.DoubleVar(value=self.ui_padding)
-        padding_spinbox = ttk.Spinbox(self.settings_frame, from_=0, to=50, increment=1, textvariable=padding_var)
-        padding_spinbox.pack()
-        print("Created padding spinbox.")
-
-        scale_label = ttk.Label(self.settings_frame, text="UI Scale:")
-        scale_label.pack()
-        print("Created scale label.")
-
-        scale_var = tk.DoubleVar(value=self.ui_scale)
-        scale_spinbox = ttk.Spinbox(self.settings_frame, from_=0.5, to=3.0, increment=0.1, textvariable=scale_var)
-        scale_spinbox.pack()
-        print("Created scale spinbox.")
-
-        def apply_settings():
-            self.ui_padding = padding_var.get()
-            self.ui_scale = scale_var.get()
-            print("Applied settings: UI Padding =", self.ui_padding, ", UI Scale =", self.ui_scale)
-            self.refresh_ui()
-
-        apply_button = ttk.Button(self.settings_frame, text="Apply", command=apply_settings)
-        apply_button.pack(pady=self.ui_padding)
-        print("Created apply settings button.")
-
-    def refresh_ui(self):
-        print("Refreshing UI with new settings.")
-        # Recreate widgets with new padding and scale
-        for widget in self.root.winfo_children():
-            widget.destroy()
-            print("Destroyed widget:", widget)
-        self.create_widgets()
-        print("Recreated widgets with updated settings.")
-
     def run(self):
         self.root.mainloop()
         print("Application closed.")
@@ -683,3 +672,10 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = DailyTrackingApp(root)
     app.run()
+
+
+    
+
+
+    
+
